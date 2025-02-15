@@ -21,24 +21,27 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+
+    - name: Set up Cosign
+      uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e #v3.8.0
 
     - name: Extract version from Dockerfile
       shell: bash
       run: echo "VERSION=$(grep -oP '(?<=ARG QBITTORRENT_VERSION=)[^ ]+' Dockerfile)" >> $GITHUB_ENV
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca #v3.9.0
 
     - name: Log in to GitHub Container Registry (GHCR)
-      uses: docker/login-action@v3
+      uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 #v3.3.0
       with:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
         registry: ghcr.io
         
     - name: Build and Push Docker Image
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991 #v6.13.0
       id: build-and-push
       with:
         push: true
@@ -48,7 +51,7 @@ jobs:
         context: .
 
     - name: Attest
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@520d128f165991a6c774bcb264f323e3d70747f4 #v2.2.0
       id: attest
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
