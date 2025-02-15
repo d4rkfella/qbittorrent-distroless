@@ -13,7 +13,7 @@ RUN apk add --update --no-cache \
         tzdata \
         go \
         build-base \
-    && go build -o /usr/bin/qbittorrent-startup /usr/bin/qbittorrent-startup.go
+    && go build -o /usr/bin/qbittorrent-startup /usr/bin/qbittorrent-startup.go \
     && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBITTORRENT_VERSION}_v${LIBTORRENT_VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
     && chmod -R 755 ./
 
