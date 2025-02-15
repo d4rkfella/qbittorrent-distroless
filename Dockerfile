@@ -5,7 +5,7 @@ ARG LIBTORRENT_VERSION=2.0.11
 
 WORKDIR /tmp
 
-COPY qbittorrent-startup.go ./
+COPY qbittorrent-startup.go cross-seed.go ./
 
 WORKDIR /app
 
@@ -16,6 +16,7 @@ RUN apk add --update --no-cache \
         go \
         build-base \
     && go build -o ./qbittorrent-startup /tmp/qbittorrent-startup.go \
+    && go build -o cross-seed cross-seed.go \
     && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBITTORRENT_VERSION}_v${LIBTORRENT_VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
     && chmod -R 755 ./
 
