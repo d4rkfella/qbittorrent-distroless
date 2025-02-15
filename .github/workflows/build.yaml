@@ -11,16 +11,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      id-token: write
       packages: write
+      contents: read
+      attestations: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Lowercase repository owner
-      shell: bash
-      run: echo "LOWERCASE_REPO_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
-    
     - name: Extract version from Dockerfile
       shell: bash
       run: echo "VERSION=$(grep -oP '(?<=ARG QBITTORRENT_VERSION=)[^ ]+' Dockerfile)" >> $GITHUB_ENV
@@ -39,9 +41,30 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         push: true
-        tags: |
-            ghcr.io/${{ env.LOWERCASE_REPO_OWNER }}/autobrr-distroless:latest
-            ghcr.io/${{ env.LOWERCASE_REPO_OWNER }}/autobrr-distroless:${{ env.VERSION }}
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
         platforms: linux/amd64
         file: Dockerfile
         context: .
+
+    - name: Attest
+      uses: actions/attest-build-provenance@v2
+      id: attest
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.build-and-push.outputs.digest }}
+        push-to-registry: true
+
+    - name: Sign the image
+      run: |
+        cosign sign --yes \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+      env:
+        COSIGN_EXPERIMENTAL: 1
+
+    - name: Verify the pushed tags
+      run: |
+        cosign verify --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+          --certificate-identity-regex "https://github.com/d4rkfella/*" \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+      env:
+        COSIGN_EXPERIMENTAL: 1
