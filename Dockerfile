@@ -10,7 +10,7 @@ COPY qbittorrent-startup.go cross-seed.go ./
 WORKDIR /app
 
 RUN apk add --update --no-cache \
-        ca-certificates \
+        ca-certificates-bundle \
         catatonit \
         tzdata \
         go \
