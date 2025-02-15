@@ -12,7 +12,6 @@ WORKDIR /app
 RUN apk add --update --no-cache \
         ca-certificates-bundle \
         catatonit \
-        tzdata \
         go \
         build-base \
     && go build -o ./qbittorrent-startup /tmp/qbittorrent-startup.go \
@@ -20,7 +19,7 @@ RUN apk add --update --no-cache \
     && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBITTORRENT_VERSION}_v${LIBTORRENT_VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
     && chmod -R 755 ./
 
-FROM scratch
+FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
@@ -33,10 +32,6 @@ ENV QBT_CONFIRM_LEGAL_NOTICE=1 \
 
 COPY --from=build /usr/bin/catatonit /usr/bin/catatonit
 COPY --from=build /app ./
-COPY --from=build /usr/lib/libcrypto.so.* /usr/lib/libssl.so.* /usr/lib/
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /etc/passwd /etc/passwd
-COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
 COPY ./qBittorrent.conf ./qBittorrent.conf
 
 ENV HOME=/config
