@@ -10,7 +10,7 @@ COPY qbittorrent-startup.go cross-seed.go ./
 WORKDIR /app
 
 ENV CGO_ENABLED=0 \
-    GOOS=linux
+    GOOS=linux \
     GOARCH=amd64
 
 RUN apk add --update --no-cache \
