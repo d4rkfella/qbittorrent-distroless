@@ -2,10 +2,28 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 )
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
 
 func main() {
 	configFile := "/config/qBittorrent/qBittorrent.conf"
@@ -21,7 +39,7 @@ func main() {
 			fmt.Printf("Error creating config directory: %v\n", err)
 			return
 		}
-		err = os.CopyFile("/app/qBittorrent.conf", configFile)
+		err = copyFile("/app/qBittorrent.conf", configFile)
 		if err != nil {
 			fmt.Printf("Error copying config file: %v\n", err)
 			return
