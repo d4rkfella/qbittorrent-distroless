@@ -1,10 +1,9 @@
 FROM docker.io/alpine:3.21.3 AS build
 
-ARG QBITTORRENT_VERSION=5.0.4
-ARG LIBTORRENT_VERSION=2.0.11
+# renovate: datasource=github-releases depName=userdocs/qbittorrent-nox-static
+ARG VERSION=release-5.0.4_v2.0.11
 
 WORKDIR /tmp
-
 COPY qbittorrent-startup.go cross-seed.go ./
 
 WORKDIR /app
@@ -21,7 +20,7 @@ RUN apk add --update --no-cache \
         build-base \
     && go build -o ./qbittorrent-startup /tmp/qbittorrent-startup.go \
     && go build -o ./cross-seed /tmp/cross-seed.go \
-    && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBITTORRENT_VERSION}_v${LIBTORRENT_VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
+    && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
     && chmod -R 755 ./
 
 FROM scratch
