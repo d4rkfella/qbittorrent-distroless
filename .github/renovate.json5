@@ -28,7 +28,7 @@
     {
       "managers": ["regex"],
       "versioning": "regex:^release-(\\d+\\.\\d+\\.\\d+)_v(\\d+\\.\\d+\\.\\d+)$"
-    }
+    },
     {
       "matchDatasources": ["github-releases"],
       "matchUpdateTypes": ["major"],
