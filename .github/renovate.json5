@@ -27,8 +27,7 @@
   "packageRules": [
     {
       "matchDatasources": ["github-releases"],
-      "matchPackageNames": ["qbittorrent-nox-static"],
-      "versioning": "regex:^release-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)_v(?<second_major>\\d+)\\.(?<second_minor>\\d+)\\.(?<second_patch>\\d+)$",
+      "versioning": "regex:^release-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)_v(?<second_major>\\d+)\\.(?<second_minor>\\d+)\\.(?<second_patch>\\d+)$"
     },
     {
       "matchDatasources": ["github-releases"],
