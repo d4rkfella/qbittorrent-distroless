@@ -18,6 +18,7 @@
       "customType": "regex",
       "description": ["Process Dockerfile custom dependencies"],
       "fileMatch": ["(^|/)Dockerfile$"],
+      "versioningTemplate": "regex:^(?:release-)?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)_v(?<compatMajor>\\d+)\\.(?<compatMinor>\\d+)\\.(?<compatPatch>\\d+)$",
       "matchStrings": [
         "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nARG (?<argName>\\S+)=v(?<currentValue>\\S+)"
       ],
