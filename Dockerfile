@@ -2,6 +2,8 @@ FROM cgr.dev/chainguard/wolfi-base:latest@sha256:7afaeb1ffbc9c33c21b9ddbd96a8014
 
 # renovate: datasource=github-releases depName=userdocs/qbittorrent-nox-static
 ARG VERSION=release-5.0.4_v2.0.11
+# renovate: datasource=github-releases depName=openSUSE/catatonit
+ARG CATATONIT_VERSION=v0.2.1
 
 WORKDIR /rootfs
 
