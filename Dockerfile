@@ -51,4 +51,4 @@ VOLUME /config
 
 EXPOSE 8080
 
-ENTRYPOINT ["catatonit", "--", "/app/qbittorrent-startup"]
+ENTRYPOINT ["catatonit", "--", "/app/bin/qbittorrent-startup"]
