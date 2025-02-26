@@ -23,8 +23,8 @@ RUN apk add --no-cache \
     mkdir -p app/bin usr/bin etc && \
     echo 'qbittorrent:x:65532:65532::/nonexistent:/sbin/nologin' > etc/passwd && \
     echo 'qbittorrent:x:65532:' > etc/group && \
-    go build -o qbittorrent-startup /tmp/qbittorrent-startup.go && \
-    go build -o cross-seed /tmp/cross-seed.go && \
+    go build -o app/bin/qbittorrent-startup /tmp/qbittorrent-startup.go && \
+    go build -o app/bin/cross-seed /tmp/cross-seed.go && \
     curl -fsSL -o app/bin/qbittorrent-nox "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${VERSION}/x86_64-qbittorrent-nox" && \
     chmod +x app/bin/qbittorrent-nox && \
     curl -fsSLO --output-dir /tmp "https://github.com/openSUSE/catatonit/releases/download/${CATATONIT_VERSION}/catatonit.x86_64{,.asc}" && \
