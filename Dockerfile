@@ -1,27 +1,34 @@
-FROM docker.io/alpine:3.21.3 AS build
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:7afaeb1ffbc9c33c21b9ddbd96a80140df1a5fa95aed6411b210bcb404e75c11 AS build
 
 # renovate: datasource=github-releases depName=userdocs/qbittorrent-nox-static
 ARG VERSION=release-5.0.4_v2.0.11
 
-WORKDIR /tmp
-COPY qbittorrent-startup.go cross-seed.go ./
-
-WORKDIR /app
+WORKDIR /rootfs
 
 ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
 
-RUN apk add --update --no-cache \
-        ca-certificates-bundle \
-        catatonit \
+COPY qbittorrent-startup.go cross-seed.go /tmp
+
+RUN apk add --no-cache \
         tzdata \
         go \
-        build-base \
-    && go build -o ./qbittorrent-startup /tmp/qbittorrent-startup.go \
-    && go build -o ./cross-seed /tmp/cross-seed.go \
-    && wget -q "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${VERSION}/x86_64-qbittorrent-nox" -O qbittorrent-nox \
-    && chmod -R 755 ./
+        gpg \
+        gpg-agent \
+        gnupg-dirmngr \
+        curl && \
+    mkdir -p app/bin usr/bin etc && \
+    echo 'qbittorrent:x:65532:65532::/nonexistent:/sbin/nologin' > etc/passwd && \
+    echo 'qbittorrent:x:65532:' > etc/group && \
+    go build -o qbittorrent-startup /tmp/qbittorrent-startup.go && \
+    go build -o cross-seed /tmp/cross-seed.go && \
+    curl -fsSL -o app/bin/qbittorrent-nox "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${VERSION}/x86_64-qbittorrent-nox" && \
+    curl -fsSLO --output-dir /tmp "https://github.com/openSUSE/catatonit/releases/download/${CATATONIT_VERSION}/catatonit.x86_64{,.asc}" && \
+    gpg --keyserver keyserver.ubuntu.com --recv-keys 5F36C6C61B5460124A75F5A69E18AA267DDB8DB4 && \
+    gpg --verify /tmp/catatonit.x86_64.asc /tmp/catatonit.x86_64 && \
+    mv /tmp/catatonit.x86_64 usr/bin/catatonit && \
+    chmod +x usr/bin/catatonit
 
 FROM scratch
 
@@ -35,11 +42,10 @@ ENV QBT_CONFIRM_LEGAL_NOTICE=1 \
     XDG_DATA_HOME="/config" \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build /usr/bin/catatonit /usr/bin/catatonit
-COPY --from=build /app ./
+COPY --from=build /rootfs /
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
-COPY ./qBittorrent.conf ./qBittorrent.conf
+COPY qBittorrent.conf qBittorrent.conf
 
 VOLUME /config
 
