@@ -8,8 +8,7 @@
     ":automergeBranch",
     ":skipStatusChecks",
     ":timezone(Europe/Sofia)",
-    ":semanticCommits",
-    "github>d4rkfella/radarr-distroless//.github/renovate/customManager.json5",
+    ":semanticCommits"
   ],
   "dependencyDashboardTitle": "Renovate Dashboard 🤖",
   "suppressNotifications": ["prEditedNotification", "prIgnoreNotification"],
