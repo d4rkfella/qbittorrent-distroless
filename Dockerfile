@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:5ec50de5d68fc25ca132976c4f4c29e2763749210aef0e3811281fb3a6a9031b AS build
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:fb9a7aedf73e6eb6c74206e61bcf60298436f4f7ab263d9cf61795097437221f AS build
 
 # renovate: datasource=github-releases depName=userdocs/qbittorrent-nox-static
 ARG VERSION=release-5.0.4_v2.0.11
