@@ -9,8 +9,3 @@ port:
 http:
   http://localhost:8080:
     status: 200
-file:
-  /app/bin/qbittorrent-startup:
-    exists: true
-  /app/bin/cross-seed:
-    exists: true
