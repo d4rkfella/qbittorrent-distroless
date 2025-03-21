@@ -111,7 +111,7 @@ jobs:
       id: attest
       with:
         push-to-registry: true
-        sbom-path: ${{ inputs.app }}-sbom.spdx.json
+        sbom-path: ${{ env.IMAGE_NAME }}-sbom.spdx.json
         subject-name: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
         subject-digest: ${{ steps.build-and-push.outputs.digest }}
 
