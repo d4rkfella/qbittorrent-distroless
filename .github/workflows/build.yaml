@@ -129,78 +129,60 @@ jobs:
           ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }},
         push: true
 
-    - name: Export Digest
+    - name: Export index digest
       id: digest
       run: |
         digest=$(echo "${{ steps.push.outputs.images }}" | grep -oP 'sha256:[^, ]+' | head -n1)
         echo "digest=${digest}" >> $GITHUB_OUTPUT
 
-    - name: Sign the image
+    - name: Extract the digests for each architecture
+      id: extract
+      shell: bash
+      run: |
+        output="digest-index=${{ steps.digest.outputs.digest }}"
+        echo "Adding GitHub step output: ${output}"
+        echo "${output}" >> $GITHUB_OUTPUT
+        output="shortdigest-index=$(echo "${{ steps.digest.outputs.digest }}" | cut -d@ -f 2)"
+        echo "Adding GitHub step output: ${output}"
+        echo "${output}" >> $GITHUB_OUTPUT
+
+        CRANE_MANIFEST_OUTPUT="$(crane manifest ${{ steps.digest.outputs.digest }})"
+        if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.oci.image.index.v1+json" ]]; then
+          for combo in `echo $CRANE_MANIFEST_OUTPUT | jq -r '.manifests[] | .platform.architecture + .platform.variant + "_" + .digest'`; do
+            arch="$(echo "${combo}" | cut -d "_" -f1)"
+            digest="$(echo "${combo}" | cut -d "_" -f2)"
+            output="digest-${arch}=${{ inputs.base-tag }}@${digest}"
+            echo "Adding GitHub step output: ${output}"
+            echo "${output}" >> $GITHUB_OUTPUT
+            output="shortdigest-${arch}=${digest}"
+            echo "Adding GitHub step output: ${output}"
+            echo "${output}" >> $GITHUB_OUTPUT
+          done
+        fi
+    
+    - name: Sign digests using cosign
       shell: bash
       env:
         COSIGN_EXPERIMENTAL: "true"
       run: |
-        cosign sign --yes ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }} \
+        function sign_digests {
+          arch="${1}"
+          digest="${2}"
+          echo "Signing ${digest} (arch: ${arch}) ..."
+          cosign sign --yes "${digest}" \
           --fulcio-url ${{ env.FULCIO_URL }}  --rekor-url ${{ env.REKOR_URL }} \
           -a sha=${{ github.sha }} \
           -a run_id=${{ github.run_id }} \
           -a run_attempt=${{ github.run_attempt }}
+        }
 
-    - name: Generate SBOM
-      uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
-      with:
-        format: spdx-json
-        image: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
-        output-file: ${{ env.IMAGE_NAME }}-sbom.spdx.json
+        sign_digests "index" "${{ steps.extract.outputs.digest-index }}"
 
-    - name: Scan SBOM
-      uses: anchore/scan-action@7c05671ae9be166aeb155bad2d7df9121823df32 # v6.1.0
-      id: scan
-      with:
-        cache-db: true
-        fail-build: false
-        sbom: ${{ env.IMAGE_NAME }}-sbom.spdx.json
-
-    - name: Attest SBOM
-      shell: bash
-      run: |
-        cosign attest --yes --type spdxjson \
-         --predicate ${{ env.IMAGE_NAME }}-sbom.spdx.json \
-         ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
-
-    - name: 'SLSA: Generate provenance and attest'
-      shell: bash
-      env:
-        COSIGN_EXPERIMENTAL: "true"
-        GENERATOR_REPOSITORY: slsa-framework/slsa-github-generator
-        GENERATOR_RELEASE_TAG: v2.0.0
-        GENERATOR_RELEASE_BINARY: slsa-generator-container-linux-amd64
-        GENERATOR_RELEASE_BINARY_SHA256: 5f293677eb3433328140c547232a760c0aa513a049c2d2f4557fefe686acdcf8
-        GH_TOKEN: "${{ github.token }}"
-        GITHUB_CONTEXT: "${{ toJSON(github) }}" # Needed by slsa-generator-container
-      run: |
-        set -x
-      
-        gh release -R "${GENERATOR_REPOSITORY}" download "${GENERATOR_RELEASE_TAG}" -p "${GENERATOR_RELEASE_BINARY}"
-        COMPUTED_HASH="$(sha256sum "${GENERATOR_RELEASE_BINARY}" | awk '{print $1}')"
-        if [[ "${COMPUTED_HASH}" != "${GENERATOR_RELEASE_BINARY_SHA256}" ]]; then
-          echo "Mismatched checksums (wanted ${GENERATOR_RELEASE_BINARY_SHA256} got ${COMPUTED_HASH}). Exiting."
-          exit 1
-        fi
-        chmod +x "${GENERATOR_RELEASE_BINARY}"
-
-        trap "rm -f provenance.json" EXIT
-        echo "Generating SLSA build provenance ..."
-        "./${GENERATOR_RELEASE_BINARY}" generate --predicate="provenance.json"
-        echo "Provenance doc:"
-        cat provenance.json | jq
-
-        echo "Attaching SLSA build provenance to ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}"
-        cosign attest --yes --type slsaprovenance \
-         --predicate="provenance.json" \
-         ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
-
-    - name: Upload SARIF Report
-      uses: github/codeql-action/upload-sarif@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
-      with:
-        sarif_file: ${{ steps.scan.outputs.sarif }}
+        [[ "${{ steps.extract.outputs.digest-amd64 }}" == "" ]] || sign_digests "amd64" "${{ steps.extract.outputs.digest-amd64 }}"
+        [[ "${{ steps.extract.outputs.digest-arm64 }}" == "" ]] || sign_digests "arm64" "${{ steps.extract.outputs.digest-arm64 }}"
+        [[ "${{ steps.extract.outputs.digest-386 }}" == "" ]] || sign_digests "386" "${{ steps.extract.outputs.digest-386 }}"
+        [[ "${{ steps.extract.outputs.digest-armv6 }}" == "" ]] || sign_digests "armv6" "${{ steps.extract.outputs.digest-armv6 }}"
+        [[ "${{ steps.extract.outputs.digest-armv7 }}" == "" ]] || sign_digests "armv7" "${{ steps.extract.outputs.digest-armv7 }}"
+        [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || sign_digests "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}"
+        [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || sign_digests "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}"
+        [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || sign_digests "s390x" "${{ steps.extract.outputs.digest-s390x }}"
