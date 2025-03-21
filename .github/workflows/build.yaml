@@ -33,10 +33,14 @@ jobs:
     - name: Set up crane
       uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
     
-    - name: Setup Node
+    - name: Set up Node
       uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
       with:
         node-version: 22.x
+
+    - name: Set up Syft
+      shell: bash
+      run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
     - name: Install Semver
       run: npm install semver
@@ -189,3 +193,65 @@ jobs:
         [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || sign_digests "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}"
         [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || sign_digests "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}"
         [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || sign_digests "s390x" "${{ steps.extract.outputs.digest-s390x }}"
+
+    - name: Create SBOMs
+      shell: bash
+      run: |
+        function create_sbom {
+          arch="${1}"
+          digest="${2}"
+          sbomfile="${3}"
+          if [[ -z "${digest}" ]]; then
+            echo "No digest found for architecture: ${arch}. Skipping."
+            return
+          fi
+          echo "Creating SBOM for ${digest} (arch: ${arch}) ..."
+          syft "${digest}" -o spdx-json > "${sbomfile}"
+          echo "SBOM saved to ${sbomfile}"
+        }
+    
+        # Create SBOM for the index manifest
+        create_sbom "index" "${{ steps.extract.outputs.digest-index }}" "sbom-index.spdx.json"
+    
+        # Create SBOMs for platform-specific manifests (if present)
+        create_sbom "amd64" "${{ steps.extract.outputs.digest-amd64 }}" "sbom-amd64.spdx.json"
+        create_sbom "arm64" "${{ steps.extract.outputs.digest-arm64 }}" "sbom-arm64.spdx.json"
+        create_sbom "386" "${{ steps.extract.outputs.digest-386 }}" "sbom-386.spdx.json"
+        create_sbom "armv6" "${{ steps.extract.outputs.digest-armv6 }}" "sbom-armv6.spdx.json"
+        create_sbom "armv7" "${{ steps.extract.outputs.digest-armv7 }}" "sbom-armv7.spdx.json"
+        create_sbom "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}" "sbom-ppc64le.spdx.json"
+        create_sbom "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}" "sbom-riscv64.spdx.json"
+        create_sbom "s390x" "${{ steps.extract.outputs.digest-s390x }}" "sbom-s390x.spdx.json"
+
+    - name: Upload SBOMs as attestations
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: "true"
+      run: |
+        function attest_sbom {
+          arch="${1}"
+          digest="${2}"
+          sbomfile="${3}"
+          if [[ "${sbomfile}" == "" ]]; then
+            echo "Unknown architecture: ${arch}. Exiting."
+            exit 1
+          fi
+          if [[ ! -f "${sbomfile}" ]]; then
+            echo "Unable to find SBOM on disk: ${sbomfile} (arch: ${arch}). Exiting."
+            exit 1
+          fi
+          echo "Attaching ${sbomfile} to ${digest} as spdxjson attestation (arch: ${arch}) ..."
+          cosign attest --yes --type spdxjson --predicate "${sbomfile}" "${digest}"
+          rm -f "${sbomfile}"
+        }
+
+        attest_sbom "index" "${{ steps.extract.outputs.digest-index }}" "sbom-index.spdx.json"
+
+        [[ "${{ steps.extract.outputs.digest-amd64 }}" == "" ]] || attest_sbom "amd64" "${{ steps.extract.outputs.digest-amd64 }}" "sbom-amd64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-arm64 }}" == "" ]] || attest_sbom "arm64" "${{ steps.extract.outputs.digest-arm64 }}" "sbom-arm64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-386 }}" == "" ]] || attest_sbom "386" "${{ steps.extract.outputs.digest-386 }}" "sbom-386.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-armv6 }}" == "" ]] || attest_sbom "armv6" "${{ steps.extract.outputs.digest-armv6 }}" "sbom-armv6.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-armv7 }}" == "" ]] || attest_sbom "armv7" "${{ steps.extract.outputs.digest-armv7 }}" "sbom-armv7.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || attest_sbom "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}" "sbom-ppc64le.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || attest_sbom "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}" "sbom-riscv64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || attest_sbom "s390x" "${{ steps.extract.outputs.digest-s390x }}" "sbom-s390x.spdx.json"
