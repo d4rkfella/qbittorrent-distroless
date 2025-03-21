@@ -83,33 +83,25 @@ jobs:
       with:
         script: |
           const semver = require('semver');
-    
           function extractVersionFromTag(tag) {
             const versionRegex = /(\d+\.\d+\.\d+)/;
             const match = tag.match(versionRegex);
             return match ? match[0] : null;
           }
-    
           function sanitizeInputVersion(version) {
             return version.split('-')[0]; // Remove any pre-release suffixes
           }
-    
           const tag = '${{ env.VERSION }}'; // Input tag (e.g., "release-5.0.4_v2.0.11")
           const extractedVersion = extractVersionFromTag(tag); // Extract "5.0.4"
           const validSemverRegex = /^v?(\d+(\.\d+)?(\.\d+)?)/;
           const date = new Date();
-    
           const parsedVersion = validSemverRegex.exec(extractedVersion);
           const validSemver = parsedVersion !== null;
-    
           const parsedSemver = validSemver ? semver.coerce(parsedVersion[0]) : null;
-    
           const outputVersion = validSemver
             ? `${parsedSemver.major}.${parsedSemver.minor}.${parsedSemver.patch}` // Use the extracted version
             : `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`; // Fallback to date-based version
-    
           const sanitizedInputVersion = validSemver ? sanitizeInputVersion(extractedVersion) : tag;
-    
           core.setOutput('version', outputVersion);
           core.setOutput('validSemver', validSemver);
           core.setOutput('sanitizedInputVersion', sanitizedInputVersion);
@@ -201,10 +193,7 @@ jobs:
           arch="${1}"
           digest="${2}"
           sbomfile="${3}"
-          if [[ -z "${digest}" ]]; then
-            echo "No digest found for architecture: ${arch}. Skipping."
-            return
-          fi
+
           echo "Creating SBOM for ${digest} (arch: ${arch}) ..."
           syft "${digest}" -o spdx-json > "${sbomfile}"
           echo "SBOM saved to ${sbomfile}"
@@ -212,14 +201,14 @@ jobs:
     
         create_sbom "index" "${{ steps.extract.outputs.digest-index }}" "sbom-index.spdx.json"
     
-        create_sbom "amd64" "${{ steps.extract.outputs.digest-amd64 }}" "sbom-amd64.spdx.json"
-        create_sbom "arm64" "${{ steps.extract.outputs.digest-arm64 }}" "sbom-arm64.spdx.json"
-        create_sbom "386" "${{ steps.extract.outputs.digest-386 }}" "sbom-386.spdx.json"
-        create_sbom "armv6" "${{ steps.extract.outputs.digest-armv6 }}" "sbom-armv6.spdx.json"
-        create_sbom "armv7" "${{ steps.extract.outputs.digest-armv7 }}" "sbom-armv7.spdx.json"
-        create_sbom "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}" "sbom-ppc64le.spdx.json"
-        create_sbom "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}" "sbom-riscv64.spdx.json"
-        create_sbom "s390x" "${{ steps.extract.outputs.digest-s390x }}" "sbom-s390x.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-amd64 }}" == "" ]] || create_sbom "amd64" "${{ steps.extract.outputs.digest-amd64 }}" "sbom-amd64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-arm64 }}" == "" ]] || create_sbom "arm64" "${{ steps.extract.outputs.digest-arm64 }}" "sbom-arm64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-386 }}" == "" ]] || create_sbom "386" "${{ steps.extract.outputs.digest-386 }}" "sbom-386.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-armv6 }}" == "" ]] || create_sbom "armv6" "${{ steps.extract.outputs.digest-armv6 }}" "sbom-armv6.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-armv7 }}" == "" ]] || create_sbom "armv7" "${{ steps.extract.outputs.digest-armv7 }}" "sbom-armv7.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || create_sbom "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}" "sbom-ppc64le.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || create_sbom "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}" "sbom-riscv64.spdx.json"
+        [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || create_sbom "s390x" "${{ steps.extract.outputs.digest-s390x }}" "sbom-s390x.spdx.json"
 
     - name: Upload SBOMs as attestations
       shell: bash
