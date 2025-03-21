@@ -16,8 +16,9 @@ jobs:
       contents: read
       attestations: write
     env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }}
+      IMAGE_NAME: qbittorrent-distroless
+      FULCIO_URL: "https://fulcio.sigstore.dev"
+      REKOR_URL: "https://rekor.sigstore.dev"
     
     steps:
     - name: Checkout code
@@ -28,7 +29,10 @@ jobs:
 
     - name: Extract version from Dockerfile
       shell: bash
-      run: echo "VERSION=$(grep -oP '(?<=ARG VERSION=)[^ ]+' Dockerfile | sed 's/release-//')" >> $GITHUB_ENV
+      run: |
+        echo "VERSION=$(grep -oP '(?<=ARG VERSION_STRIPPED=)[^ ]+' Dockerfile)" >> $GITHUB_ENV
+        echo "MAJOR_VERSION=$(echo "${{ env.VERSION }}" | cut -d'.' -f1) >> $GITHUB_ENV
+        echo "MAJOR_MINOR_VERSION=$(echo "${{ env.VERSION }}" | cut -d'.' -f1,2) >> $GITHUB_ENV
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
@@ -45,30 +49,36 @@ jobs:
       id: build-and-push
       with:
         push: true
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.MAJOR_VERSION }}
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.MAJOR_MINOR_VERSION }}
+        labels: |
+          org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+          org.opencontainers.image.url=https://ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          org.opencontainers.image.version=${{ env.VERSION }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.vendor=${{ github.repository_owner }}
         platforms: linux/amd64
         file: Dockerfile
         context: .
 
-    - name: Attest
-      uses: actions/attest-build-provenance@c074443f1aee8d4aeeae555aebba3282517141b2 # v2.2.3
-      id: attest
-      with:
-        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        subject-digest: ${{ steps.build-and-push.outputs.digest }}
-        push-to-registry: true
-
     - name: Sign the image
-      run: |
-        cosign sign --yes \
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+      shell: bash
       env:
-        COSIGN_EXPERIMENTAL: 1
+        COSIGN_EXPERIMENTAL: "true"
+      run: |
+        cosign sign --yes ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }} \
+            --fulcio-url ${{ env.FULCIO_URL }}  --rekor-url ${{ env.REKOR_URL }} \
+            -a sha=${{ github.sha }} \
+            -a run_id=${{ github.run_id }} \
+            -a run_attempt=${{ github.run_attempt }}
 
     - name: Verify the pushed tags
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: 1
       run: |
         cosign verify --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
           --certificate-identity-regexp "https://github.com/d4rkfella/*" \
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
-      env:
-        COSIGN_EXPERIMENTAL: 1
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
