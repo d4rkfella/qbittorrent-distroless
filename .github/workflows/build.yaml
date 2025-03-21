@@ -35,17 +35,11 @@ jobs:
       with:
         version: latest
 
-    - name: Construct version tags
+    - name: Extract Version
+      id: extract-version
       shell: bash
       run: |
-        VERSION=$(grep -oP '(?<=ARG VERSION=)[^ ]+' Dockerfile)
-        VERSION_STRIPPED=$(echo "$VERSION" | sed 's/^release-//; s/_v[0-9.]*$//')
-        MAJOR_VERSION=$(echo "$VERSION_STRIPPED" | cut -d'.' -f1)
-        MAJOR_MINOR_VERSION=$(echo "$VERSION_STRIPPED" | cut -d'.' -f1,2)
-    
-        echo "VERSION_STRIPPED=$VERSION_STRIPPED" >> $GITHUB_ENV
-        echo "MAJOR_VERSION=$MAJOR_VERSION" >> $GITHUB_ENV
-        echo "MAJOR_MINOR_VERSION=$MAJOR_MINOR_VERSION" >> $GITHUB_ENV
+        echo "VERSION=$(grep -oP '(?<=ARG VERSION=)[^ ]+' Dockerfile)" >> $GITHUB_ENV
 
     - name: Log in to GitHub Container Registry (GHCR)
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
@@ -58,11 +52,6 @@ jobs:
       uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
       id: build-and-push
       with:
-        push: true
-        tags: |
-          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.VERSION_STRIPPED }}
-          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.MAJOR_VERSION }}
-          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.MAJOR_MINOR_VERSION }}
         labels: |
           org.opencontainers.image.title=${{ env.IMAGE_NAME }}
           org.opencontainers.image.url=https://ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
@@ -74,6 +63,9 @@ jobs:
         context: .
         provenance: false
         sbom: false
+        outputs: |
+          type=docker
+          ${{ format('type=image,name=ghcr.io/{0}/{1},push-by-digest=true,name-canonical=true,push=true', github.repository_owner, env.IMAGE_NAME) }}
 
     - name: Run goss
       env:
@@ -85,6 +77,56 @@ jobs:
         CONTAINER_LOG_OUTPUT: goss_container_log_output
       run: |
         dgoss run ${{ steps.build-and-push.outputs.imageid }}
+
+    - name: Determine Definitive Version
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+      id: version
+      with:
+        script: |
+          const semver = require('semver');
+
+          function sanitizeInputVersion(version) {
+              return version.split('-')[0]; // Remove any pre-release suffixes
+          }
+
+          const version = '${{ env.VERSION }}';
+          const validSemverRegex = /^v?(\d+(\.\d+)?(\.\d+)?)/;
+          const date = new Date();
+          const parsedVersion = validSemverRegex.exec(version);
+          const validSemver = parsedVersion !== null;
+
+          const parsedSemver = validSemver ? semver.coerce(parsedVersion[0]) : null;
+          const outputVersion = validSemver
+              ? `${parsedSemver.major}.${parsedSemver.minor}.${parsedSemver.patch}`
+              : `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
+
+          const sanitizedInputVersion = validSemver ? sanitizeInputVersion(version) : version;
+
+          core.setOutput('version', outputVersion);
+          core.setOutput('validSemver', validSemver);
+          core.setOutput('sanitizedInputVersion', sanitizedInputVersion);
+
+    - name: Build Meta
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+      id: meta
+      with:
+        flavor: latest=false
+        images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
+          type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.validSemver }}
+          type=semver,pattern={{major}},value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.validSemver }}
+          type=raw,value=${{ steps.version.outputs.sanitizedInputVersion }},enable=${{ steps.version.outputs.validSemver }}
+          type=raw,value=rolling
+    
+    - name: Push Images
+      uses: Noelware/docker-manifest-action@b33ab348026b120a895167160f5605b0197f0862 # 0.4.3
+      id: push
+      with:
+        inputs: ${{ join(fromJSON(steps.meta.outputs.json).tags, ',') }}
+        images: >-
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }},
+        push: true
 
     - name: Sign the image
       shell: bash
