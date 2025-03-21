@@ -68,6 +68,8 @@ jobs:
         platforms: linux/amd64
         file: Dockerfile
         context: .
+        provenance: false
+        sbom: false
     
     - name: Extract and save SHAs to file
       shell: bash
