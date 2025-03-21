@@ -81,7 +81,6 @@ jobs:
         GOSS_FILE: ./tests.yaml
         GOSS_OPTS: --retry-timeout 60s --sleep 2s --color --format documentation
         GOSS_SLEEP: 2
-        GOSS_FILES_STRATEGY: cp
         CONTAINER_LOG_OUTPUT: goss_container_log_output
       run: |
         dgoss run ${{ steps.build-and-push.outputs.imageid }}
