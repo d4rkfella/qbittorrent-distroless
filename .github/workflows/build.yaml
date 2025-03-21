@@ -76,24 +76,33 @@ jobs:
       with:
         script: |
           const semver = require('semver');
-
-          function sanitizeInputVersion(version) {
-              return version.split('-')[0]; // Remove any pre-release suffixes
+    
+          function extractVersionFromTag(tag) {
+            const versionRegex = /(\d+\.\d+\.\d+)/;
+            const match = tag.match(versionRegex);
+            return match ? match[0] : null;
           }
-
-          const version = '${{ env.VERSION }}';
+    
+          function sanitizeInputVersion(version) {
+            return version.split('-')[0]; // Remove any pre-release suffixes
+          }
+    
+          const tag = '${{ env.VERSION }}'; // Input tag (e.g., "release-5.0.4_v2.0.11")
+          const extractedVersion = extractVersionFromTag(tag); // Extract "5.0.4"
           const validSemverRegex = /^v?(\d+(\.\d+)?(\.\d+)?)/;
           const date = new Date();
-          const parsedVersion = validSemverRegex.exec(version);
+    
+          const parsedVersion = validSemverRegex.exec(extractedVersion);
           const validSemver = parsedVersion !== null;
-
+    
           const parsedSemver = validSemver ? semver.coerce(parsedVersion[0]) : null;
+    
           const outputVersion = validSemver
-              ? `${parsedSemver.major}.${parsedSemver.minor}.${parsedSemver.patch}`
-              : `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`;
-
-          const sanitizedInputVersion = validSemver ? sanitizeInputVersion(version) : version;
-
+            ? `${parsedSemver.major}.${parsedSemver.minor}.${parsedSemver.patch}` // Use the extracted version
+            : `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`; // Fallback to date-based version
+    
+          const sanitizedInputVersion = validSemver ? sanitizeInputVersion(extractedVersion) : tag;
+    
           core.setOutput('version', outputVersion);
           core.setOutput('validSemver', validSemver);
           core.setOutput('sanitizedInputVersion', sanitizedInputVersion);
