@@ -75,7 +75,7 @@ jobs:
         
         # Save the index SHA to the file
         echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}" > image-refs.txt
-        echo "$MANIFEST" | jq -r '.manifests[] | "${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@" + .digest' >> image-refs.txt
+        echo "$MANIFEST" | jq -r '.manifests[] | "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@" + .digest' >> image-refs.txt
     
         echo "Image references saved to image-refs.txt:"
         cat image-refs.txt
