@@ -142,14 +142,14 @@ jobs:
       id: extract
       shell: bash
       run: |
-        output="digest-index=${{ steps.digest.outputs.digest }}"
+        output="digest-index=${{ steps.push.outputs.images }}"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
-        output="shortdigest-index=$(echo "${{ steps.digest.outputs.digest }}" | cut -d@ -f 2)"
+        output="shortdigest-index=$(echo "${{ steps.push.outputs.images }}" | cut -d@ -f 2)"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
 
-        CRANE_MANIFEST_OUTPUT="$(crane manifest ${{ steps.digest.outputs.digest }})"
+        CRANE_MANIFEST_OUTPUT="$(crane manifest ${{ steps.push.outputs.images }})"
         if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.oci.image.index.v1+json" ]]; then
           for combo in `echo $CRANE_MANIFEST_OUTPUT | jq -r '.manifests[] | .platform.architecture + .platform.variant + "_" + .digest'`; do
             arch="$(echo "${combo}" | cut -d "_" -f1)"
