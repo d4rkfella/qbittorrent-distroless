@@ -56,7 +56,7 @@ jobs:
         
     - name: Build and Push Docker Image
       uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
-      id: build-and-push
+      id: build
       with:
         labels: |
           org.opencontainers.image.title=${{ env.IMAGE_NAME }}
@@ -129,7 +129,7 @@ jobs:
       with:
         inputs: ${{ join(fromJSON(steps.meta.outputs.json).tags, ',') }}
         images: >-
-          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }},
+          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }},
         push: true
 
     - name: Export index digest
@@ -142,14 +142,14 @@ jobs:
       id: extract
       shell: bash
       run: |
-        output="digest-index=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}"
+        output="digest-index=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
-        output="shortdigest-index=$(echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}" | cut -d@ -f 2)"
+        output="shortdigest-index=$(echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" | cut -d@ -f 2)"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
 
-        CRANE_MANIFEST_OUTPUT="$(crane manifest ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }})"
+        CRANE_MANIFEST_OUTPUT="$(crane manifest ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }})"
         if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.oci.image.index.v1+json" ]]; then
           for combo in `echo $CRANE_MANIFEST_OUTPUT | jq -r '.manifests[] | .platform.architecture + .platform.variant + "_" + .digest'`; do
             arch="$(echo "${combo}" | cut -d "_" -f1)"
