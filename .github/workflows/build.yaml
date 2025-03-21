@@ -68,12 +68,24 @@ jobs:
         file: Dockerfile
         context: .
 
+    - name: Extract and save SHAs to file
+      shell: bash
+      run: |
+        MANIFEST=$(docker manifest inspect ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }})
+        
+        # Save the index SHA to the file
+        echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}" > image-refs.txt
+        echo "$MANIFEST" | jq -r '.manifests[] | "${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@" + .digest' >> image-refs.txt
+    
+        echo "Image references saved to image-refs.txt:"
+        cat image-refs.txt
+
     - name: Sign the image
       shell: bash
       env:
         COSIGN_EXPERIMENTAL: "true"
       run: |
-        cosign sign --yes ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }} \
+        cosign sign --yes $(cat image-refs.txt) \
             --fulcio-url ${{ env.FULCIO_URL }}  --rekor-url ${{ env.REKOR_URL }} \
             -a sha=${{ github.sha }} \
             -a run_id=${{ github.run_id }} \
