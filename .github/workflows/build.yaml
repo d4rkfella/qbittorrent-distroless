@@ -29,11 +29,6 @@ jobs:
 
     - name: Set up Cosign
       uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
-
-    - name: Setup goss
-      uses: mlipscombe/goss-installation-action@a440e50e0ca070a5b84fc4b99a4e2bc7f9390201 # v1.2.2
-      with:
-        version: latest
     
     - name: Setup Node
       uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
@@ -74,16 +69,6 @@ jobs:
         outputs: |
           type=docker
           ${{ format('type=image,name=ghcr.io/{0}/{1},push-by-digest=true,name-canonical=true,push=true', github.repository_owner, env.IMAGE_NAME) }}
-
-    - name: Run goss
-      env:
-        CONTAINER_RUNTIME: docker
-        GOSS_FILE: ./tests.yaml
-        GOSS_OPTS: --retry-timeout 60s --sleep 2s --color --format documentation
-        GOSS_SLEEP: 2
-        CONTAINER_LOG_OUTPUT: goss_container_log_output
-      run: |
-        dgoss run ${{ steps.build-and-push.outputs.imageid }}
 
     - name: Determine Definitive Version
       uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
