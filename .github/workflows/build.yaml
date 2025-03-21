@@ -210,10 +210,8 @@ jobs:
           echo "SBOM saved to ${sbomfile}"
         }
     
-        # Create SBOM for the index manifest
         create_sbom "index" "${{ steps.extract.outputs.digest-index }}" "sbom-index.spdx.json"
     
-        # Create SBOMs for platform-specific manifests (if present)
         create_sbom "amd64" "${{ steps.extract.outputs.digest-amd64 }}" "sbom-amd64.spdx.json"
         create_sbom "arm64" "${{ steps.extract.outputs.digest-arm64 }}" "sbom-arm64.spdx.json"
         create_sbom "386" "${{ steps.extract.outputs.digest-386 }}" "sbom-386.spdx.json"
@@ -255,3 +253,48 @@ jobs:
         [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || attest_sbom "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}" "sbom-ppc64le.spdx.json"
         [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || attest_sbom "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}" "sbom-riscv64.spdx.json"
         [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || attest_sbom "s390x" "${{ steps.extract.outputs.digest-s390x }}" "sbom-s390x.spdx.json"
+
+    - name: 'SLSA: Generate provenance and attest'
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: "true"
+        GENERATOR_REPOSITORY: slsa-framework/slsa-github-generator
+        GENERATOR_RELEASE_TAG: v2.0.0
+        GENERATOR_RELEASE_BINARY: slsa-generator-container-linux-amd64
+        GENERATOR_RELEASE_BINARY_SHA256: 5f293677eb3433328140c547232a760c0aa513a049c2d2f4557fefe686acdcf8
+        GH_TOKEN: "${{ github.token }}"
+        GITHUB_CONTEXT: "${{ toJSON(github) }}"
+      run: |
+        set -x
+      
+        gh release -R "${GENERATOR_REPOSITORY}" download "${GENERATOR_RELEASE_TAG}" -p "${GENERATOR_RELEASE_BINARY}"
+        COMPUTED_HASH="$(sha256sum "${GENERATOR_RELEASE_BINARY}" | awk '{print $1}')"
+        if [[ "${COMPUTED_HASH}" != "${GENERATOR_RELEASE_BINARY_SHA256}" ]]; then
+          echo "Mismatched checksums (wanted ${GENERATOR_RELEASE_BINARY_SHA256} got ${COMPUTED_HASH}). Exiting."
+          exit 1
+        fi
+        chmod +x "${GENERATOR_RELEASE_BINARY}"
+
+        trap "rm -f provenance.json" EXIT
+        echo "Generating SLSA build provenance ..."
+        "./${GENERATOR_RELEASE_BINARY}" generate --predicate="provenance.json"
+        echo "Provenance doc:"
+        cat provenance.json | jq
+
+        function attest_slsa {
+          arch="${1}"
+          digest="${2}"
+          echo "Attaching SLSA build provenance to ${digest} (arch: ${arch}) ..."
+          cosign attest --yes --type slsaprovenance --predicate="provenance.json" "${digest}"
+        }
+
+        attest_slsa "index" "${{ steps.extract.outputs.digest-index }}"
+
+        [[ "${{ steps.extract.outputs.digest-amd64 }}" == "" ]] || attest_slsa "amd64" "${{ steps.extract.outputs.digest-amd64 }}"
+        [[ "${{ steps.extract.outputs.digest-arm64 }}" == "" ]] || attest_slsa "arm64" "${{ steps.extract.outputs.digest-arm64 }}"
+        [[ "${{ steps.extract.outputs.digest-386 }}" == "" ]] || attest_slsa "386" "${{ steps.extract.outputs.digest-386 }}"
+        [[ "${{ steps.extract.outputs.digest-armv6 }}" == "" ]] || attest_slsa "armv6" "${{ steps.extract.outputs.digest-armv6 }}"
+        [[ "${{ steps.extract.outputs.digest-armv7 }}" == "" ]] || attest_slsa "armv7" "${{ steps.extract.outputs.digest-armv7 }}"
+        [[ "${{ steps.extract.outputs.digest-ppc64le }}" == "" ]] || attest_slsa "ppc64le" "${{ steps.extract.outputs.digest-ppc64le }}"
+        [[ "${{ steps.extract.outputs.digest-riscv64 }}" == "" ]] || attest_slsa "riscv64" "${{ steps.extract.outputs.digest-riscv64 }}"
+        [[ "${{ steps.extract.outputs.digest-s390x }}" == "" ]] || attest_slsa "s390x" "${{ steps.extract.outputs.digest-s390x }}"
