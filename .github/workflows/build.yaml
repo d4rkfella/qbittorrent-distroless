@@ -150,7 +150,7 @@ jobs:
         echo "${output}" >> $GITHUB_OUTPUT
 
         CRANE_MANIFEST_OUTPUT="$(crane manifest ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }})"
-        if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.oci.image.index.v1+json" ]]; then
+        if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.docker.distribution.manifest.list.v2+json" ]]; then
           for combo in `echo $CRANE_MANIFEST_OUTPUT | jq -r '.manifests[] | .platform.architecture + .platform.variant + "_" + .digest'`; do
             arch="$(echo "${combo}" | cut -d "_" -f1)"
             digest="$(echo "${combo}" | cut -d "_" -f2)"
