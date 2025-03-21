@@ -142,19 +142,19 @@ jobs:
       id: extract
       shell: bash
       run: |
-        output="digest-index=${{ steps.push.outputs.images }}"
+        output="digest-index=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
-        output="shortdigest-index=$(echo "${{ steps.push.outputs.images }}" | cut -d@ -f 2)"
+        output="shortdigest-index=$(echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}" | cut -d@ -f 2)"
         echo "Adding GitHub step output: ${output}"
         echo "${output}" >> $GITHUB_OUTPUT
 
-        CRANE_MANIFEST_OUTPUT="$(crane manifest ${{ steps.push.outputs.images }})"
+        CRANE_MANIFEST_OUTPUT="$(crane manifest ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }})"
         if [[ "$(echo $CRANE_MANIFEST_OUTPUT | jq -r .mediaType)" == "application/vnd.oci.image.index.v1+json" ]]; then
           for combo in `echo $CRANE_MANIFEST_OUTPUT | jq -r '.manifests[] | .platform.architecture + .platform.variant + "_" + .digest'`; do
             arch="$(echo "${combo}" | cut -d "_" -f1)"
             digest="$(echo "${combo}" | cut -d "_" -f2)"
-            output="digest-${arch}=${{ inputs.base-tag }}@${digest}"
+            output="digest-${arch}=ghcr.io/${{ github.repository }}@${digest}"
             echo "Adding GitHub step output: ${output}"
             echo "${output}" >> $GITHUB_OUTPUT
             output="shortdigest-${arch}=${digest}"
