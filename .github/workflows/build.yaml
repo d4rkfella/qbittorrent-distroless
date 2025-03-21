@@ -70,24 +70,13 @@ jobs:
         context: .
         provenance: false
         sbom: false
-    
-    - name: Extract and save SHAs to file
-      shell: bash
-      run: |
-        MANIFEST=$(docker manifest inspect ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }})
-        
-        echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}" > image-refs.txt
-        echo "$MANIFEST" | jq -r '.manifests[] | "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@" + .digest' >> image-refs.txt
-    
-        echo "Image references saved to image-refs.txt:"
-        cat image-refs.txt
 
     - name: Sign the image
       shell: bash
       env:
         COSIGN_EXPERIMENTAL: "true"
       run: |
-        cosign sign --yes $(cat image-refs.txt) \
+        cosign sign --yes ${{ steps.build-and-push.outputs.digest }} \
           --fulcio-url ${{ env.FULCIO_URL }}  --rekor-url ${{ env.REKOR_URL }} \
           -a sha=${{ github.sha }} \
           -a run_id=${{ github.run_id }} \
@@ -109,14 +98,13 @@ jobs:
         sbom: ${{ env.IMAGE_NAME }}-sbom.spdx.json
 
     - name: Attest
-      uses: actions/attest-sbom@115c3be05ff3974bcbd596578934b3f9ce39bf68 # v2.2.0
-      id: attest
-      with:
-        push-to-registry: true
-        sbom-path: ${{ env.IMAGE_NAME }}-sbom.spdx.json
-        subject-name: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-        subject-digest: ${{ steps.build-and-push.outputs.digest }}
-
+      shell: bash
+      run: |
+        cosign clean ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+        cosign attest --type spdxjson \
+         --predicate ${{ env.IMAGE_NAME }}-sbom.spdx.json \
+         ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+    
     - name: Upload SARIF Report
       uses: github/codeql-action/upload-sarif@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
       with:
