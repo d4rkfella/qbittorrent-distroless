@@ -15,6 +15,7 @@ jobs:
       packages: write
       contents: read
       attestations: write
+      security-events: write
     env:
       IMAGE_NAME: qbittorrent-distroless
       FULCIO_URL: "https://fulcio.sigstore.dev"
