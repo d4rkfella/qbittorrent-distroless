@@ -5,8 +5,6 @@ ARG VERSION=release-5.0.4_v2.0.11
 # renovate: datasource=github-releases depName=openSUSE/catatonit
 ARG CATATONIT_VERSION=v0.2.1
 
-ARG VERSION_STRIPPED=$(echo "$VERSION" | sed 's/^release-//; s/_v[0-9.]*$//')
-
 WORKDIR /rootfs
 
 ENV CGO_ENABLED=0 \
