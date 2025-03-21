@@ -76,7 +76,7 @@ jobs:
       env:
         COSIGN_EXPERIMENTAL: "true"
       run: |
-        cosign sign --yes ${{ steps.build-and-push.outputs.digest }} \
+        cosign sign --yes ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }} \
           --fulcio-url ${{ env.FULCIO_URL }}  --rekor-url ${{ env.REKOR_URL }} \
           -a sha=${{ github.sha }} \
           -a run_id=${{ github.run_id }} \
