@@ -100,7 +100,7 @@ jobs:
     - name: Attest
       shell: bash
       run: |
-        cosign attest --type spdxjson \
+        cosign attest --yes --type spdxjson \
          --predicate ${{ env.IMAGE_NAME }}-sbom.spdx.json \
          ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
     
