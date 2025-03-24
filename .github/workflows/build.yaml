@@ -35,9 +35,9 @@ jobs:
         shell: bash
         run: |
           TAG=$(curl -s "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases/latest" | jq -r '.tag_name')
-          echo FULL_VERSION=$(echo "$TAG" | sed -n 's/.*[vV]\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p') >> $GITHUB_ENV
-          echo MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1) >> $GITHUB_ENV
-          echo MAJOR.MINOR_VERSION=$(echo "$VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
+          echo FULL_VERSION=$(echo "$TAG" | sed -n 's/.*release-\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p') >> $GITHUB_ENV
+          echo MAJOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1) >> $GITHUB_ENV
+          echo MAJOR.MINOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
   
       - uses: d4rkfella/actions/apko-snapshot@main
         id: apko
@@ -50,10 +50,11 @@ jobs:
           build-repository-append: https://packages.darkfellanetwork.com
           keyring-append: https://packages.darkfellanetwork.com/melange.rsa.pub
           annotations: |
-            org.opencontainers.image.title:qbittorrent-distroless
-            org.opencontainers.image.version:${{ env.FULL_VERSION }}
-            org.opencontainers.image.revision:${{ github.sha }}
-            org.opencontainers.image.vendor:${{ github.repository_owner }}
+            "org.opencontainers.image.url:https://ghcr.io/${{ github.repository_owner }}/qbittorrent-distroless"
+            "org.opencontainers.image.title:qbittorrent-distroless"
+            "org.opencontainers.image.version:${{ env.FULL_VERSION }}"
+            "org.opencontainers.image.revision:${{ github.sha }}"
+            "org.opencontainers.image.vendor:${{ github.repository_owner }}"
   
       - uses: d4rkfella/actions/vul-scans@main
         id: scans
