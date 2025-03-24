@@ -38,13 +38,13 @@ jobs:
           FULL_VERSION=$(echo "$TAG" | sed -n 's/.*release-\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
           echo FULL_VERSION=$FULL_VERSION >> $GITHUB_ENV
           echo MAJOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1) >> $GITHUB_ENV
-          echo MAJOR.MINOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
+          echo MAJOR_MINOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
   
       - uses: d4rkfella/actions/apko-snapshot@main
         id: apko
         with:
           source-date-epoch: ${{ steps.snapshot-date.outputs.epoch }}
-          additional-tags: ${{ env.FULL_VERSION }},${{ env.MAJOR_VERSION }},${{ env.MAJOR.MINOR_VERSION }}
+          additional-tags: ${{ env.FULL_VERSION }},${{ env.MAJOR_VERSION }},${{ env.MAJOR_MINOR_VERSION }}
           archs: amd64
           slsa-attest: "true"
           sbom-attest: "true"
