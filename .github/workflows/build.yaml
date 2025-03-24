@@ -49,12 +49,7 @@ jobs:
           sbom-attest: "true"
           build-repository-append: https://packages.darkfellanetwork.com
           keyring-append: https://packages.darkfellanetwork.com/melange.rsa.pub
-          annotations: |
-            org.opencontainers.image.url:https://ghcr.io/${{ github.repository_owner }}/qbittorrent-distroless
-            org.opencontainers.image.title:qbittorrent-distroless
-            org.opencontainers.image.version:${{ env.FULL_VERSION }}
-            org.opencontainers.image.revision:${{ github.sha }}
-            org.opencontainers.image.vendor:${{ github.repository_owner }}
+          annotations: org.opencontainers.image.url:https://ghcr.io/${{ github.repository_owner }}/qbittorrent-distroless,org.opencontainers.image.title:qbittorrent-distroless,org.opencontainers.image.version:${{ env.FULL_VERSION }},org.opencontainers.image.revision:${{ github.sha }},org.opencontainers.image.vendor:${{ github.repository_owner }}
   
       - uses: d4rkfella/actions/vul-scans@main
         id: scans
