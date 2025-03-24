@@ -51,7 +51,7 @@ jobs:
           keyring-append: https://packages.darkfellanetwork.com/melange.rsa.pub
           annotations: |
             org.opencontainers.image.title:qbittorrent-distroless
-            org.opencontainers.image.url:ghcr.io/${{ github.repository_owner }}/qbittorrent-distroless
+            org.opencontainers.image.url:https://ghcr.io/${{ github.repository_owner }}/qbittorrent-distroless
             org.opencontainers.image.version:${{ env.FULL_VERSION }}
             org.opencontainers.image.revision:${{ github.sha }}
             org.opencontainers.image.vendor:${{ github.repository_owner }}
