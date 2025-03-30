@@ -4,7 +4,7 @@ contents:
   repositories:
     - https://packages.wolfi.dev/os
   packages:
-    - ca-certificates-bundle
+    - wolfi-baselayout
     - qbittorrent-nox-static
     - tzdata
     - catatonit
