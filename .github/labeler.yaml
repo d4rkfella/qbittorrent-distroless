@@ -1,8 +1,0 @@
----
-# Areas
-area/github:
-  - changed-files:
-      - any-glob-to-any-file: ".github/**/*"
-area/dockerfile:
-  - changed-files:
-      - any-glob-to-any-file: "Dockerfile"
