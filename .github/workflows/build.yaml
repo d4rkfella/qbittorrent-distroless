@@ -34,11 +34,26 @@ jobs:
       - name: Extract version
         shell: bash
         run: |
-          TAG=$(curl -s "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases/latest" | jq -r '.tag_name')
-          FULL_VERSION=$(echo "$TAG" | sed -n 's/.*release-\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
-          echo FULL_VERSION=$FULL_VERSION >> $GITHUB_ENV
-          echo MAJOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1) >> $GITHUB_ENV
-          echo MAJOR_MINOR_VERSION=$(echo "$FULL_VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
+          LATEST_VERSION=$(
+              aws s3api list-objects-v2 \
+              --bucket "$BUCKET" \
+              --endpoint-url "$AWS_ENDPOINT_URL" \
+              --query "Contents[?contains(Key, '$PACKAGE-')].Key" \
+              --output text | \
+              grep -Eo "$PACKAGE-[0-9]+\.[0-9]+\.[0-9]+" | \
+              sort -Vu | \
+              tail -n 1 | \
+              sed "s/$PACKAGE-//"
+          )
+          echo FULL_VERSION=$LATEST_VERSION >> $GITHUB_ENV
+          echo MAJOR_VERSION=$(echo "$LATEST_VERSION" | cut -d. -f1) >> $GITHUB_ENV
+          echo MAJOR_MINOR_VERSION=$(echo "$LATEST_VERSION" | cut -d. -f1-2) >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+          PACKAGE: postgres-init
+          BUCKET: packages
   
       - uses: d4rkfella/actions/apko-snapshot@main
         id: apko
