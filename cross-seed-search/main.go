@@ -19,7 +19,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-playground/validator/v10"
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	"golang.org/x/time/rate"
 )
 
@@ -31,24 +30,17 @@ var (
 	validate   = validator.New()
 	httpClient = &http.Client{
 		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableCompression:  false,
-			DisableKeepAlives:   false,
-			MaxIdleConnsPerHost: 10,
-		},
 	}
 )
 
 type Config struct {
-	CrossSeedEnabled       bool   `mapstructure:"CROSS_SEED_ENABLED"`
-	CrossSeedURL           string `mapstructure:"CROSS_SEED_URL"`
-	CrossSeedAPIKey        string `mapstructure:"CROSS_SEED_API_KEY"`
-	CrossSeedSleepInterval int    `mapstructure:"CROSS_SEED_SLEEP_INTERVAL"`
-	PushoverEnabled        bool   `mapstructure:"PUSHOVER_ENABLED"`
-	PushoverUserKey        string `mapstructure:"PUSHOVER_USER_KEY"`
-	PushoverToken          string `mapstructure:"PUSHOVER_TOKEN"`
+	CrossSeedEnabled       bool
+	CrossSeedURL           string
+	CrossSeedAPIKey        string
+	CrossSeedSleepInterval int
+	PushoverEnabled        bool
+	PushoverUserKey        string
+	PushoverToken          string
 }
 
 type ReleaseInfo struct {
@@ -71,10 +63,8 @@ func main() {
 		"date":    date,
 	}).Info("Starting torrent notifier")
 
-	cfg, err := loadConfig()
-	if err != nil {
-		log.Fatalf("Configuration error: %v", err)
-	}
+	cfg := loadConfig()
+	log.WithField("config", fmt.Sprintf("%+v", cfg)).Debug("Loaded configuration")
 
 	if len(os.Args) != 6 {
 		log.Fatalf("Usage: %s <release_name> <info_hash> <category> <size> <indexer>", os.Args[0])
@@ -88,8 +78,8 @@ func main() {
 	limiter := rate.NewLimiter(rate.Every(5*time.Second), 2)
 
 	if cfg.PushoverEnabled {
-		if err := validatePushoverConfig(cfg); err != nil {
-			log.Fatalf("Pushover config error: %v", err)
+		if cfg.PushoverUserKey == "" || cfg.PushoverToken == "" {
+			log.Fatal("Pushover enabled but missing user key or token")
 		}
 
 		if err := limiter.Wait(ctx); err != nil {
@@ -102,8 +92,8 @@ func main() {
 	}
 
 	if cfg.CrossSeedEnabled {
-		if err := validateCrossSeedConfig(cfg); err != nil {
-			log.Fatalf("CrossSeed config error: %v", err)
+		if cfg.CrossSeedURL == "" || cfg.CrossSeedAPIKey == "" {
+			log.Fatal("CrossSeed enabled but missing URL or API key")
 		}
 
 		if err := limiter.Wait(ctx); err != nil {
@@ -136,25 +126,36 @@ func configureLogger() {
 	}
 }
 
-func loadConfig() (*Config, error) {
-	viper.AutomaticEnv()
-	viper.SetConfigName("config")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("/etc/torrent-notifier/")
-	viper.SetDefault("CROSS_SEED_SLEEP_INTERVAL", 30)
-
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("config file error: %w", err)
-		}
+func loadConfig() *Config {
+	return &Config{
+		CrossSeedEnabled:       getEnvBool("CROSS_SEED_ENABLED", false),
+		CrossSeedURL:           os.Getenv("CROSS_SEED_URL"),
+		CrossSeedAPIKey:        os.Getenv("CROSS_SEED_API_KEY"),
+		CrossSeedSleepInterval: getEnvInt("CROSS_SEED_SLEEP_INTERVAL", 30),
+		PushoverEnabled:        getEnvBool("PUSHOVER_ENABLED", false),
+		PushoverUserKey:        os.Getenv("PUSHOVER_USER_KEY"),
+		PushoverToken:          os.Getenv("PUSHOVER_TOKEN"),
 	}
+}
 
-	cfg := &Config{}
-	if err := viper.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("config unmarshal failed: %w", err)
+func getEnvBool(key string, defaultValue bool) bool {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue
 	}
+	return strings.ToLower(val) == "true"
+}
 
-	return cfg, nil
+func getEnvInt(key string, defaultValue int) int {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue
+	}
+	result, err := strconv.Atoi(val)
+	if err != nil {
+		return defaultValue
+	}
+	return result
 }
 
 func parseAndValidateReleaseInfo(args []string) (*ReleaseInfo, error) {
@@ -222,7 +223,7 @@ func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) err
 	data.Set("infoHash", release.InfoHash)
 	data.Set("includeSingleEpisodes", "true")
 
-	return retryOperation(ctx, 3, 2*time.Second, func() error {
+	err := retryOperation(ctx, 3, 2*time.Second, func() error {
 		return sendHTTPRequest(
 			ctx,
 			http.MethodPost,
@@ -232,9 +233,16 @@ func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) err
 				"Content-Type": "application/x-www-form-urlencoded",
 				"X-Api-Key":    cfg.CrossSeedAPIKey,
 			},
-			http.StatusOK,
+			http.StatusNoContent,
 		)
 	})
+
+	if cfg.CrossSeedSleepInterval > 0 {
+		log.Debugf("Sleeping for %d seconds after CrossSeed request", cfg.CrossSeedSleepInterval)
+		time.Sleep(time.Duration(cfg.CrossSeedSleepInterval) * time.Second)
+	}
+
+	return err
 }
 
 func sendHTTPRequest(
@@ -267,6 +275,12 @@ func sendHTTPRequest(
 		req.Header.Set(k, v)
 	}
 
+	log.WithFields(logrus.Fields{
+		"url":     targetURL,
+		"method":  method,
+		"headers": redactHeaders(headers),
+	}).Debug("Sending HTTP request")
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -275,7 +289,11 @@ func sendHTTPRequest(
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != expectedStatus {
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("unexpected status %d (expected %d): %s",
+			resp.StatusCode,
+			expectedStatus,
+			string(respBody),
+		)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -284,6 +302,18 @@ func sendHTTPRequest(
 	}).Debug("HTTP request successful")
 
 	return nil
+}
+
+func redactHeaders(headers map[string]string) map[string]string {
+	safe := make(map[string]string)
+	for k, v := range headers {
+		if strings.EqualFold(k, "X-Api-Key") {
+			safe[k] = "[REDACTED]"
+		} else {
+			safe[k] = v
+		}
+	}
+	return safe
 }
 
 func retryOperation(ctx context.Context, maxAttempts int, initialDelay time.Duration, op func() error) error {
@@ -311,29 +341,6 @@ func retryOperation(ctx context.Context, maxAttempts int, initialDelay time.Dura
 	}
 
 	return fmt.Errorf("after %d attempts, last error: %w", maxAttempts, err)
-}
-
-func validateCrossSeedConfig(cfg *Config) error {
-	if cfg.CrossSeedURL == "" {
-		return errors.New("cross-seed URL is required")
-	}
-	if _, err := url.ParseRequestURI(cfg.CrossSeedURL); err != nil {
-		return fmt.Errorf("invalid cross-seed URL: %w", err)
-	}
-	if cfg.CrossSeedAPIKey == "" {
-		return errors.New("cross-seed API key is required")
-	}
-	return nil
-}
-
-func validatePushoverConfig(cfg *Config) error {
-	if cfg.PushoverUserKey == "" {
-		return errors.New("pushover user key is required")
-	}
-	if cfg.PushoverToken == "" {
-		return errors.New("pushover token is required")
-	}
-	return nil
 }
 
 func extractHostname(rawURL string) (string, error) {
