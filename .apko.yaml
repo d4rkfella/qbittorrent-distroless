@@ -6,6 +6,7 @@ contents:
   packages:
     - wolfi-baselayout
     - qbittorrent-nox-static
+    - cross-seed-search
     - tzdata
     - catatonit
 work-dir: /config
@@ -32,5 +33,4 @@ environment:
   XDG_DATA_HOME: "/config"
 entrypoint: 
   command:
-    /usr/bin/catatonit --
-cmd: /usr/bin/qbittorrent-startup
+    catatonit -- qbittorrent-init
