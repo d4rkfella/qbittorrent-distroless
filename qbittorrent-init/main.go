@@ -113,25 +113,21 @@ func configureLogger() {
 }
 
 func setupEnvironment() error {
-	setPort("QBT_WEBUI_PORT", "QBITTORRENT__PORT", defaultWebPort)
-	setPort("QBT_TORRENTING_PORT", "QBITTORRENT__BT_PORT", defaultBtPort)
-
-	if os.Getenv("QBT_WEBUI_PORT") == "" {
-		return fmt.Errorf("WEBUI_PORT must be set")
-	}
-	if os.Getenv("QBT_TORRENTING_PORT") == "" {
-		return fmt.Errorf("TORRENTING_PORT must be set")
-	}
-	return nil
-}
-
-func setPort(targetVar, sourceVar, defaultValue string) {
-	if val := os.Getenv(sourceVar); val != "" {
-		os.Setenv(targetVar, val)
+	if port := os.Getenv("QBT_WEBUI_PORT"); port != "" {
+		logger.Info("Using custom Web UI port", "port", port)
 	} else {
-		os.Setenv(targetVar, defaultValue)
-		logger.Warn("Using default port", "variable", targetVar, "value", defaultValue)
+		os.Setenv("QBT_WEBUI_PORT", defaultWebPort)
+		logger.Warn("QBT_WEBUI_PORT not set, using default", "port", defaultWebPort)
 	}
+
+	if port := os.Getenv("QBT_TORRENTING_PORT"); port != "" {
+		logger.Info("Using custom Torrenting port", "port", port)
+	} else {
+		os.Setenv("QBT_TORRENTING_PORT", defaultBtPort)
+		logger.Warn("QBT_TORRENTING_PORT not set, using default", "port", defaultBtPort)
+	}
+
+	return nil
 }
 
 func initializeConfig() error {
