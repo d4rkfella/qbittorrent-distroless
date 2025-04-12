@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
+	"html/template"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -21,35 +22,78 @@ const (
 )
 
 var (
-	version   = "dev"
-	buildTime = ""
-	logger    *slog.Logger
+	version = "dev"
+	commit  = ""
+	date    = ""
+	logger  *slog.Logger
 )
+
+type ConfigTemplateData struct {
+	PortRangeMin         string
+	UPnP                 string
+	Locale               string
+	UseRandomPort        string
+	WebUIAddress         string
+	CSRFProtection       string
+	HostHeaderValidation string
+	LocalHostAuth        string
+	ServerDomains        string
+	WebUIUseUPnP         string
+}
+
+const defaultConfigTemplate = `[AutoRun]
+enabled=false
+program=
+
+[LegalNotice]
+Accepted=true
+
+[BitTorrent]
+Session\AsyncIOThreadsCount=10
+Session\DiskCacheSize=-1
+Session\DiskIOReadMode=DisableOSCache
+Session\DiskIOType=SimplePreadPwrite
+Session\DiskIOWriteMode=EnableOSCache
+Session\DiskQueueSize=4194304
+Session\FilePoolSize=40
+Session\HashingThreadsCount=2
+Session\ResumeDataStorageType=SQLite
+Session\UseOSCache=true
+
+[Preferences]
+Connection\PortRangeMin={{ .PortRangeMin }}
+Connection\UPnP={{ .UPnP }}
+General\Locale={{ .Locale }}
+General\UseRandomPort={{ .UseRandomPort }}
+WebUI\Address={{ .WebUIAddress }}
+WebUI\CSRFProtection={{ .CSRFProtection }}
+WebUI\HostHeaderValidation={{ .HostHeaderValidation }}
+WebUI\LocalHostAuth={{ .LocalHostAuth }}
+WebUI\ServerDomains={{ .ServerDomains }}
+WebUI\UseUPnP={{ .WebUIUseUPnP }}
+`
 
 func main() {
 	configureLogger()
 	logger.Info("Starting qBittorrent initializer",
 		"version", version,
-		"build_time", buildTime)
+		"commit", commit,
+		"date", date)
 
-	// Handle termination signals
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Validate and set configuration
 	if err := setupEnvironment(); err != nil {
 		logger.Error("Failed to setup environment", "error", err)
 		os.Exit(1)
 	}
 
-	// Initialize configuration files
 	if err := initializeConfig(); err != nil {
 		logger.Error("Configuration initialization failed", "error", err)
 		os.Exit(1)
 	}
 
-	// Start qBittorrent process
 	if err := runQBittorrent(ctx); err != nil {
 		logger.Error("qBittorrent process failed", "error", err)
 		os.Exit(1)
@@ -65,23 +109,19 @@ func configureLogger() {
 	}).WithAttrs([]slog.Attr{
 		slog.String("service", "qbittorrent-init"),
 	})
-
 	logger = slog.New(handler)
 }
 
 func setupEnvironment() error {
-	// Set ports with defaults
 	setPort("QBT_WEBUI_PORT", "QBITTORRENT__PORT", defaultWebPort)
 	setPort("QBT_TORRENTING_PORT", "QBITTORRENT__BT_PORT", defaultBtPort)
 
-	// Validate environment variables
 	if os.Getenv("QBT_WEBUI_PORT") == "" {
 		return fmt.Errorf("WEBUI_PORT must be set")
 	}
 	if os.Getenv("QBT_TORRENTING_PORT") == "" {
 		return fmt.Errorf("TORRENTING_PORT must be set")
 	}
-
 	return nil
 }
 
@@ -95,34 +135,65 @@ func setPort(targetVar, sourceVar, defaultValue string) {
 }
 
 func initializeConfig() error {
-	// Create config directory if needed
 	if err := ensureConfigFile(defaultConfigPath); err != nil {
 		return fmt.Errorf("config file setup failed: %w", err)
 	}
-
-	// Setup logging symlink
 	if err := ensureLogSymlink(defaultLogPath); err != nil {
 		return fmt.Errorf("log setup failed: %w", err)
 	}
-
 	return nil
 }
 
 func ensureConfigFile(configPath string) error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		logger.Info("Initializing default configuration", "path", configPath)
+		logger.Info("Configuration file does not exist, writing templated configuration", "path", configPath)
 
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return fmt.Errorf("failed to create config directory: %w", err)
 		}
 
-		if err := copyFile("/app/qBittorrent.conf", configPath); err != nil {
-			return fmt.Errorf("failed to copy config file: %w", err)
+		tmpl, err := template.New("config").Parse(defaultConfigTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to parse config template: %w", err)
 		}
 
-		logger.Info("Default configuration copied successfully")
+		data := ConfigTemplateData{
+			PortRangeMin:         getEnv("QBT_TORRENTING_PORT", "6881"),
+			UPnP:                 getEnv("QBT_UPNP", "false"),
+			Locale:               getEnv("QBT_LOCALE", "en"),
+			UseRandomPort:        getEnv("QBT_USE_RANDOM_PORT", "false"),
+			WebUIAddress:         getEnv("QBT_WEBUI_ADDRESS", "*"),
+			CSRFProtection:       getEnv("QBT_CSRF_PROTECTION", "false"),
+			HostHeaderValidation: getEnv("QBT_HOST_HEADER_VALIDATION", "false"),
+			LocalHostAuth:        getEnv("QBT_LOCALHOST_AUTH", "false"),
+			ServerDomains:        getEnv("QBT_SERVER_DOMAINS", "*"),
+			WebUIUseUPnP:         getEnv("QBT_WEBUI_USE_UPNP", "false"),
+		}
+
+		var rendered bytes.Buffer
+		if err := tmpl.Execute(&rendered, data); err != nil {
+			return fmt.Errorf("failed to render config template: %w", err)
+		}
+
+		if err := os.WriteFile(configPath, rendered.Bytes(), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		logger.Info("Templated configuration written successfully")
+	} else if err != nil {
+		return fmt.Errorf("failed to check config file: %w", err)
+	} else {
+		logger.Info("Configuration file already exists, skipping write", "path", configPath)
 	}
 	return nil
+}
+
+func getEnv(key, fallback string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	return val
 }
 
 func ensureLogSymlink(logPath string) error {
@@ -139,30 +210,6 @@ func ensureLogSymlink(logPath string) error {
 
 		logger.Info("Log symlink created successfully")
 	}
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy file contents: %w", err)
-	}
-
-	if err := os.Chmod(dst, 0644); err != nil {
-		return fmt.Errorf("failed to set file permissions: %w", err)
-	}
-
 	return nil
 }
 
