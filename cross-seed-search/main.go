@@ -25,7 +25,8 @@ import (
 
 var (
 	version    = "dev"
-	buildTime  = ""
+	commit     = ""
+	date       = ""
 	log        = logrus.New()
 	validate   = validator.New()
 	httpClient = &http.Client{
@@ -66,7 +67,8 @@ func main() {
 	configureLogger()
 	log.WithFields(logrus.Fields{
 		"version":    version,
-		"buildTime":  buildTime,
+		"commit":     commit,
+		"date":       date,
 	}).Info("Starting torrent notifier")
 
 	cfg, err := loadConfig()
