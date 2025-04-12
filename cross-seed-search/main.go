@@ -66,9 +66,8 @@ func main() {
 
 	configureLogger()
 	log.WithFields(logrus.Fields{
-		"version":    version,
-		"commit":     commit,
-		"date":       date,
+		"version":   version,
+		"buildTime": buildTime,
 	}).Info("Starting torrent notifier")
 
 	cfg, err := loadConfig()
