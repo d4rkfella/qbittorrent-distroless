@@ -43,12 +43,12 @@ var (
 
 type Config struct {
 	CrossSeedEnabled       bool   `mapstructure:"CROSS_SEED_ENABLED"`
-	CrossSeedURL          string `mapstructure:"CROSS_SEED_URL"`
-	CrossSeedAPIKey       string `mapstructure:"CROSS_SEED_API_KEY"`
+	CrossSeedURL           string `mapstructure:"CROSS_SEED_URL"`
+	CrossSeedAPIKey        string `mapstructure:"CROSS_SEED_API_KEY"`
 	CrossSeedSleepInterval int    `mapstructure:"CROSS_SEED_SLEEP_INTERVAL"`
-	PushoverEnabled       bool   `mapstructure:"PUSHOVER_ENABLED"`
-	PushoverUserKey       string `mapstructure:"PUSHOVER_USER_KEY"`
-	PushoverToken         string `mapstructure:"PUSHOVER_TOKEN"`
+	PushoverEnabled        bool   `mapstructure:"PUSHOVER_ENABLED"`
+	PushoverUserKey        string `mapstructure:"PUSHOVER_USER_KEY"`
+	PushoverToken          string `mapstructure:"PUSHOVER_TOKEN"`
 }
 
 type ReleaseInfo struct {
@@ -197,12 +197,12 @@ func sendPushoverNotification(ctx context.Context, cfg *Config, release *Release
 	)
 
 	payload := map[string]string{
-		"token":     cfg.PushoverToken,
-		"user":      cfg.PushoverUserKey,
-		"title":     fmt.Sprintf("%s Downloaded", release.Type),
-		"message":   message,
-		"priority":  "-2",
-		"html":      "1",
+		"token":    cfg.PushoverToken,
+		"user":     cfg.PushoverUserKey,
+		"title":    fmt.Sprintf("%s Downloaded", release.Type),
+		"message":  message,
+		"priority": "-2",
+		"html":     "1",
 	}
 
 	return retryOperation(ctx, 3, 2*time.Second, func() error {
