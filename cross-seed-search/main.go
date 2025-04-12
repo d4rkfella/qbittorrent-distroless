@@ -34,13 +34,12 @@ var (
 )
 
 type Config struct {
-	CrossSeedEnabled       bool
-	CrossSeedURL           string
-	CrossSeedAPIKey        string
-	CrossSeedSleepInterval int
-	PushoverEnabled        bool
-	PushoverUserKey        string
-	PushoverToken          string
+	CrossSeedEnabled bool
+	CrossSeedURL     string
+	CrossSeedAPIKey  string
+	PushoverEnabled  bool
+	PushoverUserKey  string
+	PushoverToken    string
 }
 
 type ReleaseInfo struct {
@@ -128,13 +127,12 @@ func configureLogger() {
 
 func loadConfig() *Config {
 	return &Config{
-		CrossSeedEnabled:       getEnvBool("CROSS_SEED_ENABLED", false),
-		CrossSeedURL:           os.Getenv("CROSS_SEED_URL"),
-		CrossSeedAPIKey:        os.Getenv("CROSS_SEED_API_KEY"),
-		CrossSeedSleepInterval: getEnvInt("CROSS_SEED_SLEEP_INTERVAL", 30),
-		PushoverEnabled:        getEnvBool("PUSHOVER_ENABLED", false),
-		PushoverUserKey:        os.Getenv("PUSHOVER_USER_KEY"),
-		PushoverToken:          os.Getenv("PUSHOVER_TOKEN"),
+		CrossSeedEnabled: getEnvBool("CROSS_SEED_ENABLED", false),
+		CrossSeedURL:     os.Getenv("CROSS_SEED_URL"),
+		CrossSeedAPIKey:  os.Getenv("CROSS_SEED_API_KEY"),
+		PushoverEnabled:  getEnvBool("PUSHOVER_ENABLED", false),
+		PushoverUserKey:  os.Getenv("PUSHOVER_USER_KEY"),
+		PushoverToken:    os.Getenv("PUSHOVER_TOKEN"),
 	}
 }
 
@@ -223,7 +221,7 @@ func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) err
 	data.Set("infoHash", release.InfoHash)
 	data.Set("includeSingleEpisodes", "true")
 
-	err := retryOperation(ctx, 3, 2*time.Second, func() error {
+	return retryOperation(ctx, 3, 2*time.Second, func() error {
 		return sendHTTPRequest(
 			ctx,
 			http.MethodPost,
@@ -236,13 +234,6 @@ func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) err
 			http.StatusNoContent,
 		)
 	})
-
-	if cfg.CrossSeedSleepInterval > 0 {
-		log.Debugf("Sleeping for %d seconds after CrossSeed request", cfg.CrossSeedSleepInterval)
-		time.Sleep(time.Duration(cfg.CrossSeedSleepInterval) * time.Second)
-	}
-
-	return err
 }
 
 func sendHTTPRequest(
