@@ -162,7 +162,7 @@ func parseAndValidateReleaseInfo(args []string) (*ReleaseInfo, error) {
 	}
 
 	size, err := strconv.ParseInt(args[3], 10, 64)
-	if err != nil || size <= 0 {
+	if err != nil {
 		return nil, fmt.Errorf("invalid size: %w", err)
 	}
 
