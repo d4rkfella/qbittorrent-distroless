@@ -3,14 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,19 +25,21 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-playground/validator/v10"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
+
+func isHexString(s string) bool {
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
 
 var (
 	version    = "dev"
 	commit     = ""
 	date       = ""
-	log        = logrus.New()
+	log        *slog.Logger
 	validate   = validator.New()
-	httpClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	httpClient = createHTTPClient()
 )
 
 type Config struct {
@@ -44,62 +53,91 @@ type Config struct {
 
 type ReleaseInfo struct {
 	Name     string `validate:"required"`
-	InfoHash string `validate:"required,hexadecimal,len=40"`
+	InfoHash string `validate:"required,infohash"`
 	Category string `validate:"required"`
 	Size     int64  `validate:"gt=0"`
 	Indexer  string `validate:"required,url"`
 	Type     string `validate:"required"`
 }
 
+func init() {
+	err := validate.RegisterValidation("infohash", func(fl validator.FieldLevel) bool {
+		hash := fl.Field().String()
+		return len(hash) == 40 && isHexString(hash)
+	})
+
+	if err != nil {
+		panic("Failed to register custom validator: " + err.Error())
+	}
+}
+
 func main() {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("Critical error recovered",
+				"panic", r,
+				"stack", string(debug.Stack()))
+			os.Exit(1)
+		}
+	}()
+    
+	configureLogger()
+	
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	configureLogger()
-	log.WithFields(logrus.Fields{
-		"version": version,
-		"commit":  commit,
-		"date":    date,
-	}).Info("Starting torrent notifier")
+	log.Info("Starting torrent notifier",
+		"version", version,
+		"commit", commit,
+		"date", date)
 
 	cfg := loadConfig()
-	log.WithField("config", fmt.Sprintf("%+v", cfg)).Debug("Loaded configuration")
+	log.Debug("Loaded configuration",
+		"cross_seed_enabled", cfg.CrossSeedEnabled,
+		"pushover_enabled", cfg.PushoverEnabled,
+	)
 
 	if len(os.Args) != 6 {
-		log.Fatalf("Usage: %s <release_name> <info_hash> <category> <size> <indexer>", os.Args[0])
+		log.Error("Invalid arguments",
+			"usage", fmt.Sprintf("%s <release_name> <info_hash> <category> <size> <indexer>", os.Args[0]))
+		os.Exit(1)
 	}
 
 	release, err := parseAndValidateReleaseInfo(os.Args[1:])
 	if err != nil {
-		log.Fatalf("Invalid input: %v", err)
+		log.Error("Invalid input", "error", err)
+		os.Exit(1)
 	}
 
 	limiter := rate.NewLimiter(rate.Every(5*time.Second), 2)
 
 	if cfg.PushoverEnabled {
 		if cfg.PushoverUserKey == "" || cfg.PushoverToken == "" {
-			log.Fatal("Pushover enabled but missing user key or token")
+			log.Error("Pushover enabled but missing credentials")
+			os.Exit(1)
 		}
 
 		if err := limiter.Wait(ctx); err != nil {
-			log.Warnf("Rate limit exceeded for Pushover: %v", err)
+			log.WarnContext(ctx, "Rate limit exceeded for Pushover", "error", err)
 		} else {
 			if err := sendPushoverNotification(ctx, cfg, release); err != nil {
-				log.Errorf("Pushover notification failed: %v", err)
+				log.ErrorContext(ctx, "Pushover notification failed", "error", err)
 			}
 		}
 	}
 
 	if cfg.CrossSeedEnabled {
 		if cfg.CrossSeedURL == "" || cfg.CrossSeedAPIKey == "" {
-			log.Fatal("CrossSeed enabled but missing URL or API key")
+			log.Error("CrossSeed enabled but missing configuration")
+			os.Exit(1)
 		}
 
 		if err := limiter.Wait(ctx); err != nil {
-			log.Warnf("Rate limit exceeded for CrossSeed: %v", err)
+			log.WarnContext(ctx, "Rate limit exceeded for CrossSeed", "error", err)
 		} else {
 			if err := searchCrossSeed(ctx, cfg, release); err != nil {
-				log.Errorf("CrossSeed search failed: %v", err)
+				log.ErrorContext(ctx, "CrossSeed search failed", "error", err)
 			}
 		}
 	}
@@ -107,21 +145,63 @@ func main() {
 	log.Info("Processing completed successfully")
 }
 
-func configureLogger() {
-	log.SetFormatter(&logrus.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyTime:  "timestamp",
-			logrus.FieldKeyLevel: "severity",
-			logrus.FieldKeyMsg:   "message",
+func createHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				CipherSuites: []uint16{
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+					tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				},
+			},
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 0,
+			}).DialContext,
 		},
-	})
-	log.SetOutput(os.Stdout)
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
 
-	if level, err := logrus.ParseLevel(os.Getenv("LOG_LEVEL")); err == nil {
-		log.SetLevel(level)
-	} else {
-		log.SetLevel(logrus.InfoLevel)
+func configureLogger() {
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     getLogLevel(),
+		AddSource: false,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			switch a.Key {
+			case slog.LevelKey:
+				return slog.Attr{Key: "severity", Value: a.Value}
+			case slog.TimeKey:
+				return slog.Attr{Key: "timestamp", Value: a.Value}
+			case slog.MessageKey:
+				return slog.Attr{Key: "message", Value: a.Value}
+			}
+			return a
+		},
+	}).WithAttrs([]slog.Attr{
+		slog.String("service", "qbittorrent-notifier"),
+	})
+
+	log = slog.New(handler)
+}
+
+func getLogLevel() slog.Level {
+	level := strings.ToUpper(os.Getenv("LOG_LEVEL"))
+	switch level {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "INFO":
+		return slog.LevelInfo
+	case "WARN", "WARNING":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }
 
@@ -183,15 +263,12 @@ func parseAndValidateReleaseInfo(args []string) (*ReleaseInfo, error) {
 }
 
 func sendPushoverNotification(ctx context.Context, cfg *Config, release *ReleaseInfo) error {
-	hostname, err := extractHostname(release.Indexer)
-	if err != nil {
-		return fmt.Errorf("failed to parse indexer URL: %w", err)
-	}
 
-	message := fmt.Sprintf("<b>%s</b><small>\n<b>Category:</b> %s</small><small>\n<b>Indexer:</b> %s</small><small>\n<b>Size:</b> %s</small>",
-		strings.TrimSuffix(release.Name, ".torrent"),
-		release.Category,
-		hostname,
+	message := fmt.Sprintf(
+		"<b>%s</b><small>\n<b>Category:</b> %s</small><small>\n<b>Indexer:</b> %s</small><small>\n<b>Size:</b> %s</small>",
+		html.EscapeString(strings.TrimSuffix(release.Name, ".torrent")),
+		html.EscapeString(release.Category),
+		html.EscapeString(release.Indexer),
 		humanize.Bytes(uint64(release.Size)),
 	)
 
@@ -217,6 +294,11 @@ func sendPushoverNotification(ctx context.Context, cfg *Config, release *Release
 }
 
 func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) error {
+	targetURL, err := buildSafeURL(cfg.CrossSeedURL, "/api/webhook")
+	if err != nil {
+		return fmt.Errorf("failed to build safe URL: %w", err)
+	}
+
 	data := url.Values{}
 	data.Set("infoHash", release.InfoHash)
 	data.Set("includeSingleEpisodes", "true")
@@ -225,7 +307,7 @@ func searchCrossSeed(ctx context.Context, cfg *Config, release *ReleaseInfo) err
 		return sendHTTPRequest(
 			ctx,
 			http.MethodPost,
-			fmt.Sprintf("%s/api/webhook", cfg.CrossSeedURL),
+			targetURL,
 			data.Encode(),
 			map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
@@ -244,6 +326,21 @@ func sendHTTPRequest(
 	headers map[string]string,
 	expectedStatus int,
 ) error {
+	if ct, exists := headers["Content-Type"]; exists {
+		switch ct {
+		case "application/json":
+			if _, ok := body.(map[string]interface{}); !ok {
+				return fmt.Errorf("content-type/json requires map body, got %T", body)
+			}
+		case "application/x-www-form-urlencoded":
+			if _, ok := body.(string); !ok {
+				return fmt.Errorf("content-type/form requires string body, got %T", body)
+			}
+		default:
+			return fmt.Errorf("unsupported content-type: %s", ct)
+		}
+	}
+
 	var reqBody io.Reader
 
 	switch v := body.(type) {
@@ -266,11 +363,10 @@ func sendHTTPRequest(
 		req.Header.Set(k, v)
 	}
 
-	log.WithFields(logrus.Fields{
-		"url":     targetURL,
-		"method":  method,
-		"headers": redactHeaders(headers),
-	}).Debug("Sending HTTP request")
+	log.DebugContext(ctx, "Sending HTTP request",
+		"url", targetURL,
+		"method", method,
+		"headers", redactHeaders(headers))
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -279,18 +375,18 @@ func sendHTTPRequest(
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+
+	log.DebugContext(ctx, "HTTP response received",
+		"status", resp.StatusCode,
+		"body", redactBody(string(respBody)),
+	)
+
 	if resp.StatusCode != expectedStatus {
-		return fmt.Errorf("unexpected status %d (expected %d): %s",
-			resp.StatusCode,
-			expectedStatus,
-			string(respBody),
-		)
+		return fmt.Errorf("unexpected status %d (expected %d)",
+			resp.StatusCode, expectedStatus)
 	}
 
-	log.WithFields(logrus.Fields{
-		"url":    targetURL,
-		"status": resp.StatusCode,
-	}).Debug("HTTP request successful")
+	log.Info("HTTP request was successful")
 
 	return nil
 }
@@ -308,6 +404,10 @@ func redactHeaders(headers map[string]string) map[string]string {
 }
 
 func retryOperation(ctx context.Context, maxAttempts int, initialDelay time.Duration, op func() error) error {
+	const maxTotalTimeout = 10 * time.Minute
+	ctx, cancel := context.WithTimeout(ctx, maxTotalTimeout)
+	defer cancel()
+
 	var err error
 	delay := initialDelay
 
@@ -317,27 +417,94 @@ func retryOperation(ctx context.Context, maxAttempts int, initialDelay time.Dura
 			return nil
 		}
 
+		if !isRetriableError(err) {
+			return err
+		}
+
 		if attempt == maxAttempts {
 			break
 		}
 
-		log.Warnf("Attempt %d failed: %v. Retrying in %v", attempt, err, delay)
+		log.WarnContext(ctx, "Operation attempt failed",
+			"attempt", attempt,
+			"error", err,
+			"retry_in", delay)
 
 		select {
 		case <-time.After(delay):
 			delay *= 2
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 
-	return fmt.Errorf("after %d attempts, last error: %w", maxAttempts, err)
+	return fmt.Errorf("operation failed after %d attempts: %w", maxAttempts, err)
 }
 
-func extractHostname(rawURL string) (string, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid URL: %w", err)
+func isRetriableError(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
 	}
-	return u.Hostname(), nil
+
+	var statusErr interface{ StatusCode() int }
+	if errors.As(err, &statusErr) {
+		code := statusErr.StatusCode()
+		return code == http.StatusTooManyRequests ||
+			code >= http.StatusInternalServerError
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+
+	return false
+}
+
+func redactBody(content string) string {
+	if strings.Contains(content, "api_key") {
+		return "[REDACTED_API_KEY]"
+	}
+	if strings.Contains(content, "token") {
+		return "[REDACTED_TOKEN]"
+	}
+	if len(content) > 100 {
+		return fmt.Sprintf("[TRUNCATED_LEN=%d]", len(content))
+	}
+	return content
+}
+
+func buildSafeURL(baseURL, urlPath string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("invalid URL scheme: %s", u.Scheme)
+	}
+
+	if strings.Contains(urlPath, "..") || strings.Contains(urlPath, "//") {
+		return "", errors.New("invalid path containing traversal attempt")
+	}
+
+	if os.Getenv("ENV") == "production" && u.Scheme != "https" {
+		return "", errors.New("insecure scheme in production environment")
+	}
+
+	newURL, err := u.Parse(urlPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to construct safe URL: %w", err)
+	}
+
+	newURL.Fragment = ""
+	newURL.RawPath = ""
+
+	newURL.Path = path.Clean(newURL.Path)
+
+	return newURL.String(), nil
 }
