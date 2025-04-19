@@ -81,9 +81,9 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-    
+
 	configureLogger()
-	
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
