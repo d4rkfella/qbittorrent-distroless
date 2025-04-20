@@ -326,22 +326,22 @@ func sendHTTPRequest(
 	headers map[string]string,
 	expectedStatus int,
 ) error {
-	if ct, exists := headers["Content-Type"]; exists {
-		switch ct {
-		case "application/json":
-			if _, ok := body.(map[string]interface{}); !ok {
-				return fmt.Errorf("content-type/json requires map body, got %T", body)
-			}
-		case "application/x-www-form-urlencoded":
-			if _, ok := body.(string); !ok {
-				return fmt.Errorf("content-type/form requires string body, got %T", body)
-			}
-		default:
-			return fmt.Errorf("unsupported content-type: %s", ct)
-		}
-	}
-
 	var reqBody io.Reader
+
+	if ct, exists := headers["Content-Type"]; exists && ct == "application/x-www-form-urlencoded" {
+		if s, ok := body.(string); ok {
+			reqBody = strings.NewReader(s)
+		} else {
+			return fmt.Errorf("form data must be string, got %T", body)
+		}
+	} else {
+		jsonData, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		reqBody = bytes.NewReader(jsonData)
+		headers["Content-Type"] = "application/json"
+	}
 
 	switch v := body.(type) {
 	case string:
