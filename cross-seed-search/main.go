@@ -328,31 +328,36 @@ func sendHTTPRequest(
 ) error {
 	var reqBody io.Reader
 
-	if ct, exists := headers["Content-Type"]; exists && ct == "application/x-www-form-urlencoded" {
-		if s, ok := body.(string); ok {
-			reqBody = strings.NewReader(s)
-		} else {
-			return fmt.Errorf("form data must be string, got %T", body)
-		}
-	} else {
-		jsonData, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %w", err)
-		}
-		reqBody = bytes.NewReader(jsonData)
-		headers["Content-Type"] = "application/json"
-	}
+	if ct, exists := headers["Content-Type"]; exists {
+        switch ct {
+        case "application/x-www-form-urlencoded":
+            s, ok := body.(string)
+            if !ok {
+                return fmt.Errorf("form data must be string, got %T", body)
+            }
+            reqBody = strings.NewReader(s)
 
-	switch v := body.(type) {
-	case string:
-		reqBody = strings.NewReader(v)
-	default:
-		jsonData, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("failed to marshal request body: %w", err)
+        case "application/json":
+            jsonData, err := json.Marshal(body)
+            if err != nil {
+                return fmt.Errorf("failed to marshal JSON: %w", err)
+            }
+            reqBody = bytes.NewReader(jsonData)
+
+        default:
+            return fmt.Errorf("unsupported Content-Type: %s", ct)
+        }
+    } else {
+		if headers == nil {
+			headers = make(map[string]string)
 		}
-		reqBody = bytes.NewReader(jsonData)
-	}
+        jsonData, err := json.Marshal(body)
+        if err != nil {
+            return fmt.Errorf("failed to marshal JSON: %w", err)
+        }
+        reqBody = bytes.NewReader(jsonData)
+        headers["Content-Type"] = "application/json"
+    }
 
 	req, err := http.NewRequestWithContext(ctx, method, targetURL, reqBody)
 	if err != nil {
